@@ -122,8 +122,9 @@ function copy(selection) {
     }
 
     // Fill
+    var hasBgBlur = (node.blur && node.blur.visible && node.blur.isBackgroundEffect);
     var fillName = (node instanceof sg.Text)? "color" : "background";
-    if (node.fill && node.fillEnabled) {
+    if (node.fill && node.fillEnabled && !hasBgBlur) {
         var fill = node.fill;
         if (fill instanceof sg.Color) {
             css += `${fillName}: ${colorToCSS(fill)};\n`;
@@ -132,8 +133,9 @@ function copy(selection) {
                 return colorToCSS(stop.color) + " " + num(stop.stop * 100) + "%";
             });
             css += `${fillName}: linear-gradient(${ stops.join(", ") });\n`;  // TODO: gradient direction!
+        } else if (fill instanceof sg.ImageFill) {
+            css += `/* background: url(...); */\n`;
         }
-        // TODO: image fills
     } else {
         css += `${fillName}: transparent;\n`;
     }
@@ -160,6 +162,37 @@ function copy(selection) {
             css += `box-shadow: ${shadowSettings};\n`;
         } else {
             css += `filter: drop-shadow(${shadowSettings});\n`;
+        }
+    }
+
+    // Blur
+    if (node.blur && node.blur.visible) {
+        var blur = node.blur;
+        if (blur.isBackgroundEffect) {
+            // Blur itself
+            var backdropCSS = `backdrop-filter: blur(${blur.blurAmount}px);\n`;
+            css += `/* Note: currently only Safari supports backdrop-filter */\n`;
+            css += backdropCSS;
+            css += `--webkit-` + backdropCSS;
+
+            // Brightness slider
+            // XD background blur brightness setting is essentially blending black/white with the blurred background: equivalent to translucent
+            // background-color in CSS. (Can't use 'backdrop-filter: brightness()', which just multiplies each RGB value & also causes hue
+            // shifts when some channels become saturated).
+            if (blur.brightnessAmount > 0) {
+                css += `background-color: rgba(255, 255, 255, ${num(blur.brightnessAmount / 100)});\n`;
+            } else if (blur.brightnessAmount < 0) {
+                css += `background-color: rgba(0, 0, 0, ${-num(blur.brightnessAmount / 100)});\n`;
+            }
+
+            // Fill opacity
+            if (blur.fillOpacity > 0) {
+                // This blends the shape's fill on top of the blurred background (fill itself is unblurred).
+                // TODO: support this for solid & gradient fills by baking alpha (& brightnessAmount color) into fill!
+                css += `/* (plus shape's fill blended on top as a separate layer with ${num(blur.fillOpacity * 100)}% opacity) */\n`;
+            }
+        } else {
+            css += `filter: ${blur.blurAmount}px;\n`;
         }
     }
 
